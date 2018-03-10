@@ -1,11 +1,13 @@
 const UtilityLib = artifacts.require("./UtilityLib.sol");
+const ContentScore = artifacts.require("./ContentScore.sol");
 const RECDAO = artifacts.require("./RECDAO.sol");
 const Token = artifacts.require("./Token.sol");
 const Registry = artifacts.require("./Registry.sol");
 const TokenFactory = artifacts.require("./TokenFactory.sol");
 const merkleRoot = require("../data/merkleRoot.json");
 
-module.exports = function(deployer) {
+module.exports = function(deployer, network) {
+  console.log(`migration on ${network}`);
   let tokenAddress, regAddress, daoAddress;
   deployer.deploy(UtilityLib)
     .then( () => deployer.link(UtilityLib, RECDAO) )
@@ -17,6 +19,7 @@ module.exports = function(deployer) {
     .then( () => deployer.deploy(Registry) )
     .then( () => Registry.deployed() )
     .then( registry => regAddress = registry.address )
+    .then( () => deployer.deploy(ContentScore, regAddress) )
     .then( () => deployer.deploy(RECDAO, 0, tokenAddress, regAddress, merkleRoot, 6000, 0) )
     .then( () => RECDAO.deployed() )
     .then( dao => daoAddress = dao.address )
