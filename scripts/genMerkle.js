@@ -1,5 +1,4 @@
 const MerkleTreeSolidity = require("merkle-tree-solidity");
-const Web3 = require("web3");
 const MerkleTree = MerkleTreeSolidity.default;
 const checkProof = MerkleTreeSolidity.checkProof;
 const merkleRoot = MerkleTreeSolidity.merkleRoot;

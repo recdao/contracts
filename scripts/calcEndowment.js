@@ -1,4 +1,4 @@
-const modDayRate = require("../out/modDayRate.json");
+// const modDayRate = require("../out/modDayRate.json");
 const collectedTill = require("../out/collectedTill.json");
 
 function calcEndowment(user){
