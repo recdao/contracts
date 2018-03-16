@@ -4,11 +4,14 @@ import "./Interfaces.sol";
 
 contract ContentDAO {
 
+    enum Stage                                       { NONE, ACTIVE, ADJUDICATION, COMPLETE }
+
     struct Post {
       uint                                           startedAt;
       uint                                           lastSigStakeAt;
       uint                                           toFlip;
       bool                                           liked;
+      Stage                                          stage;
       mapping(bool => uint)                          totals;
       mapping(bool => mapping(address => uint))      stakes;
     }
@@ -17,9 +20,9 @@ contract ContentDAO {
     IToken                          public token;
     uint                            public subunits;
     uint                            public MEMBER_MIN_KARMA = 500;
-    uint                            public FLIP_PERCENT = 125;
-    uint                            public ADJUDICATION_THRESHOLD = 10;
-    uint                            public SIG_STAKE = 200;                     // also serve as min stake? - yes
+    uint                            public FLIP_PERCENT = 200;
+    uint                            public ADJUDICATION_THRESHOLD = 2100;       // if start stake is 50 then at 2100, both sides = contribution
+    uint                            public SIG_STAKE = 50;                      // also serve as min stake? - yes
     uint                            public SIG_STAKE_DELAY = 43;                // delays end of staking for 10min if sig stake occurs
     uint                            public STAKE_DURATION = 6000;               // ~24 hrs
 
@@ -33,8 +36,7 @@ contract ContentDAO {
 
     function stake(uint40 _id, bool _vote, uint _amount) public {
       Post storage post = posts[_id];
-      // TODO require is open for staking (not finished or in adjudication)
-
+      require( isStakeable(_id) );
       // stake needs to support side opposite to currently winning
       require( _vote != post.liked );
       // trim _amount
@@ -46,6 +48,11 @@ contract ContentDAO {
       post.stakes[_vote][msg.sender] += _amount;
       if(_amount == post.toFlip) flip(post);
       if(_amount >= SIG_STAKE*subunits) post.lastSigStakeAt = block.number;
+
+      // if within final hour, trigger adjudication (250 blocks = 1 hr)
+      if(block.number >= post.startedAt + STAKE_DURATION - 250) startAdjudication(post);
+      // if total becomes over threshold, trigger adjudication
+      if(post.totals[_vote] >= ADJUDICATION_THRESHOLD) startAdjudication(post);
     }
 
     function flip(Post _post) internal {
@@ -53,9 +60,14 @@ contract ContentDAO {
         _post.toFlip = FLIP_PERCENT * _post.toFlip / 100;
     }
 
+    function startAdjudication(Post _post) internal {
+        _post.stage = Stage.ADJUDICATION;
+        // inAdjudication array?
+    }
+
     function init(uint40 _id, uint _amount) public {
       // not already existing
-      require( posts[_id].startedAt == 0 );
+      require( posts[_id].stage == Stage.NONE );
       // over min stake
       require( _amount >= SIG_STAKE*subunits );
       // can transfer tokens
@@ -63,11 +75,15 @@ contract ContentDAO {
       Post storage post = posts[_id];
       post.totals[true] += _amount;
       post.startedAt = block.number;
+      post.stage = Stage.ACTIVE;
       posts[_id] = post;
     }
 
     function vote(uint40 _id, bool _vote) public {
         require( isMember(msg.sender) );
+        Post storage post = posts[_id];
+        require( post.stage == Stage.ADJUDICATION );
+
         // TODO - all
     }
 
@@ -77,6 +93,13 @@ contract ContentDAO {
 
         uint32 karma = registry.getKarma(username);
         return karma >= MEMBER_MIN_KARMA;
+    }
+
+    function isStakeable(uint40 _id) public view returns (bool) {
+        Post storage post = posts[_id];
+        return post.stage == Stage.ACTIVE &&
+               ( block.number < post.startedAt + STAKE_DURATION ||
+                 block.number < post.lastSigStakeAt + SIG_STAKE_DELAY );
     }
 
 }
