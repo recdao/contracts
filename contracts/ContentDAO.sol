@@ -5,6 +5,7 @@ import "./Interfaces.sol";
 contract ContentDAO {
 
     struct Post {
+      uint                                           startedAt;
       uint                                           lastSigStakeAt;
       uint                                           toFlip;
       bool                                           liked;
@@ -18,7 +19,7 @@ contract ContentDAO {
     uint                            public MEMBER_MIN_KARMA = 500;
     uint                            public FLIP_PERCENT = 125;
     uint                            public ADJUDICATION_THRESHOLD = 10;
-    uint                            public SIG_STAKE = 200;                     // also serve as min stake?
+    uint                            public SIG_STAKE = 200;                     // also serve as min stake? - yes
     uint                            public SIG_STAKE_DELAY = 43;                // delays end of staking for 10min if sig stake occurs
     uint                            public STAKE_DURATION = 6000;               // ~24 hrs
 
@@ -48,15 +49,21 @@ contract ContentDAO {
     }
 
     function flip(Post _post) internal {
-        post.liked = !post.liked;
-        post.toFlip = FLIP_PERCENT * post.toFlip / 100;
+        _post.liked = !_post.liked;
+        _post.toFlip = FLIP_PERCENT * _post.toFlip / 100;
     }
 
     function init(uint40 _id, uint _amount) public {
+      // not already existing
+      require( posts[_id].startedAt == 0 );
+      // over min stake
+      require( _amount >= SIG_STAKE*subunits );
+      // can transfer tokens
       require( token.transferFrom(msg.sender, this, _amount) );
-      Post memory post;
+      Post storage post = posts[_id];
       post.totals[true] += _amount;
-      post.lastSigStakeAt = block.number;
+      post.startedAt = block.number;
+      posts[_id] = post;
     }
 
     function vote(uint40 _id, bool _vote) public {
