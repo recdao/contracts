@@ -1,5 +1,4 @@
-const contractConfig = require("../config/contracts.json");
-const decimals = contractConfig.default.contracts.Token.args[4];
+const decimals = require("../data/config.json").Token.decimals;
 
 module.exports = function(num){
   return num * Math.pow(10, decimals);

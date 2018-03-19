@@ -1,0 +1,10 @@
+{
+  "Token": {
+    "decimals": 9,
+    "name": "Reddit Ethereum Community Token",
+    "symbol": "RECT"
+  },
+  "RECDAO": {
+    "rootIdx": 1
+  }
+}

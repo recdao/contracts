@@ -13,7 +13,8 @@ const bufferToHex = utils.bufferToHex;
 const setLengthLeft = utils.setLengthLeft;
 const setLengthRight = utils.setLengthRight;
 const users = require("../out/users.json");
-const rootIdx = require("../data/rootIdx.json");
+const config = require("../data/config.json");
+const rootIdx = config.RECDAO.rootIdx;
 const fs = require("fs");
 
 const userArrays = users.map(u=>[u.address, u.username, calcEndowment(u), u.firstContent]);

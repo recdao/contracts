@@ -4,6 +4,7 @@ const RECDAO = artifacts.require("./RECDAO.sol");
 const Token = artifacts.require("./Token.sol");
 const Registry = artifacts.require("./Registry.sol");
 const TokenFactory = artifacts.require("./TokenFactory.sol");
+const config = require("../data/config.json");
 const merkleRoot = require("../data/merkleRoot.json");
 
 module.exports = function(deployer, network) {
@@ -13,7 +14,7 @@ module.exports = function(deployer, network) {
     .then( () => deployer.link(UtilityLib, RECDAO) )
     .then( () => deployer.deploy(TokenFactory) )
     .then( () => TokenFactory.deployed() )
-    .then( tokenFactory => deployer.deploy(Token, tokenFactory.address, 0, 0, "Reddit Ethereum Community Token", 9, "RECT", true ) )
+    .then( tokenFactory => deployer.deploy(Token, tokenFactory.address, 0, 0, config.Token.name, config.Token.decimals, config.Token.symbol, true ) )
     .then( () => Token.deployed() )
     .then( token => tokenAddress = token.address )
     .then( () => deployer.deploy(Registry) )

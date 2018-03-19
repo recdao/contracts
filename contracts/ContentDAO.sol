@@ -34,6 +34,7 @@ contract ContentDAO {
     mapping(uint40 => Post)         public posts;
 
     event Opened(uint40 id);
+    event Flipped(uint40 id);
     event StartAdjudication(uint40 id);
 
     function ContentDAO (address _registry, address _token) {
@@ -42,51 +43,74 @@ contract ContentDAO {
         subunits = 10 ** uint(token.decimals());
     }
 
+    /* function stakeTest(uint40 _id, bool _vote, uint _amount) public returns(bool) {
+        Post storage post = posts[_id];
+        if(_amount > post.toFlip)
+            _amount = post.toFlip;
+        return _amount == post.toFlip;
+    } */
+
     function stake(uint40 _id, bool _vote, uint _amount) public {
-      Post storage post = posts[_id];
-      require( isStakeable(_id) );
-      // stake needs to support side opposite to currently winning
-      require( _vote != post.liked );
-      // trim _amount
-      if(_amount > post.toFlip)
-          _amount = post.toFlip;
+        Post storage post = posts[_id];
+        require( isStakeable(_id) );
+        // stake needs to support side opposite to currently winning
+        require( _vote != post.liked );
+        // trim _amount
+        if(_amount > post.toFlip)
+            _amount = post.toFlip;                                                // trim stake if over amount needed to flip - TODO fix this so can just stake without trim or chance of revert
 
-      require( token.transferFrom(msg.sender, this, _amount) );
+        require( token.transferFrom(msg.sender, this, _amount) );
 
-      post.stakes[_vote][msg.sender] += _amount;
-      if(_amount == post.toFlip) flip(post);
-      if(_amount >= SIG_STAKE*subunits) post.lastSigStakeAt = block.number;
+        post.stakes[_vote][msg.sender] += _amount;
+        post.totals[_vote] += _amount;
+        if(_amount == post.toFlip) flip(_id);
+        if(_amount >= SIG_STAKE*subunits) post.lastSigStakeAt = block.number;
 
-      // if within final hour, trigger adjudication (250 blocks = 1 hr)
-      if(block.number >= post.startedAt + STAKE_DURATION - 250) startAdjudication(post);
-      // if total becomes over threshold, trigger adjudication
-      if(post.totals[_vote] >= ADJUDICATION_THRESHOLD) startAdjudication(post);
+        // if within final hour, trigger adjudication (250 blocks = 1 hr)
+        if(block.number >= post.startedAt + STAKE_DURATION - 250) startAdjudication(_id);
+        // if total becomes over threshold, trigger adjudication
+        if(post.totals[_vote] >= ADJUDICATION_THRESHOLD*subunits) startAdjudication(_id);
     }
 
-    function flip(Post _post) internal {
-        _post.liked = !_post.liked;
-        _post.toFlip = FLIP_PERCENT * _post.toFlip / 100;
+    function flip(uint40 _id) internal {
+        Post storage post = posts[_id];
+        post.toFlip = FLIP_PERCENT * post.toFlip / 100;
+        post.liked = !post.liked;
+        Flipped(_id);
     }
 
-    function startAdjudication(uint40 _id, Post _post) internal {
-        _post.stage = Stage.ADJUDICATION;
+    function startAdjudication(uint40 _id) internal {
+        Post storage post = posts[_id];
+        post.stage = Stage.ADJUDICATION;
         StartAdjudication(_id);
         // inAdjudication array?
     }
 
+    /* function openTest(uint40 _id, uint _amount) public returns (bool) { */
+    /* function openTest(uint40 _id, uint _amount) public {
+        // not already existing
+        require( posts[_id].stage == Stage.NONE );
+        // over min stake
+        require( _amount >= SIG_STAKE*subunits );
+        // can transfer tokens
+        require( token.transferFrom(msg.sender, this, _amount) );
+    } */
+
     function open(uint40 _id, uint _amount) public {
-      // not already existing
-      require( posts[_id].stage == Stage.NONE );
-      // over min stake
-      require( _amount >= SIG_STAKE*subunits );
-      // can transfer tokens
-      require( token.transferFrom(msg.sender, this, _amount) );
-      Post storage post = posts[_id];
-      post.totals[true] += _amount;
-      post.startedAt = block.number;
-      post.stage = Stage.ACTIVE;
-      posts[_id] = post;
-      Opened(_id);
+        // not already existing
+        require( posts[_id].stage == Stage.NONE );
+        // over min stake
+        require( _amount >= SIG_STAKE*subunits );
+        // can transfer tokens
+        require( token.transferFrom(msg.sender, this, _amount) );
+        Post storage post = posts[_id];
+        post.startedAt = block.number;
+        post.toFlip = FLIP_PERCENT * _amount / 100;
+        post.liked = true;
+        post.stage = Stage.ACTIVE;
+        post.totals[true] += _amount;
+        post.stakes[true][msg.sender] += _amount;
+        Opened(_id);
     }
 
     function vote(uint40 _id, bool _vote) public {
@@ -102,24 +126,24 @@ contract ContentDAO {
     }
 
     function withdraw(uint40 _id) public {
-      require( isEnded(_id) );
-      // get winning side
-      Post storage post = posts[_id];
-      bool liked = post.liked;
-      if( post.stage == Stage.ADJUDICATION &&
-          ( post.voteTotals[true] > 0 || post.voteTotals[false] > 0 ) ) {       // no vote no ruling
-          liked = post.voteTotals[true] > post.voteTotals[false];
-          if ( !post.feePaid ) {
-            require( token.transferFrom(this, 0, post.totals[!liked] * ADJUDICATION_FEE_PERCENT / 100) );
-            post.feePaid = true;
-          }
-      }
+        require( isEnded(_id) );
+        // get winning side
+        Post storage post = posts[_id];
+        bool liked = post.liked;
+        if( post.stage == Stage.ADJUDICATION &&
+            ( post.voteTotals[true] > 0 || post.voteTotals[false] > 0 ) ) {       // no vote no ruling
+            liked = post.voteTotals[true] > post.voteTotals[false];
+            if ( !post.feePaid ) {
+              require( token.transferFrom(this, 0, post.totals[!liked] * ADJUDICATION_FEE_PERCENT / 100) );
+              post.feePaid = true;
+            }
+        }
 
-      uint stake = post.stakes[liked][msg.sender];
-      uint award = post.totals[!liked] * stake  / post.totals[liked];
-      // if adjudicated, get winning side
-      require( token.transferFrom(this, msg.sender, stake + award) );
-      // send and delete address=>stake mapping
+        uint stake = post.stakes[liked][msg.sender];
+        uint award = post.totals[!liked] * stake  / post.totals[liked];
+        // if adjudicated, get winning side
+        require( token.transferFrom(this, msg.sender, stake + award) );
+        // send and delete address=>stake mapping
     }
 
     function isEnded(uint40 _id) public view returns(bool) {
