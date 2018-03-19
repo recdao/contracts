@@ -40,25 +40,57 @@ contract('ContentDAO', function(accounts) {
 
   it("open Post staking", async function() {
     let contentDAO = await ContentDAO.deployed();
+    // 50  150 600   2400
+    // 100 300 1200  1600
     let open = await contentDAO.open(redditPostId, decimalize(50));
     let post = await contentDAO.posts.call(redditPostId);
-    assert.equal(post[4].valueOf(), 1, "post was not Stage.ACTIVE");
+    assert.equal(post[3].valueOf(), 1, "post was not Stage.ACTIVE");
   });
 
   it("flip post to unliked", async function() {
     let contentDAO = await ContentDAO.deployed();
     let stake = await contentDAO.stake(redditPostId, false, decimalize(100));
     let post = await contentDAO.posts.call(redditPostId);
-    assert.equal(post[3], false, "post was not flipped to liked=false");
+    assert.equal(post[2], false, "post was not flipped to liked=false");
   });
 
   it("small stake then trim", async function() {
     let contentDAO = await ContentDAO.deployed();
-    let stake1 = await contentDAO.stake(redditPostId, true, decimalize(60));    // not enough to flip
-    let stake2 = await contentDAO.stake(redditPostId, true, decimalize(345));   // amount should be trimmed
+    let stake01 = await contentDAO.stake(redditPostId, true, decimalize(140));   // not enough to flip
+    let stake02 = await contentDAO.stake(redditPostId, true, decimalize(20));    // amount should be trimmed
     let post = await contentDAO.posts.call(redditPostId);
-    assert.equal(post[3], true, "post was not flipped to liked=true");
-    assert.equal(post[2].valueOf(), 400000000000, "toFlip wasn't changed to 400");
+    assert.equal(post[2], true, "post was not flipped to liked=true");
+  });
+
+  it("trigger adjudication", async function() {
+    let contentDAO = await ContentDAO.deployed();
+
+    let stake1 = await contentDAO.stake(redditPostId, false, decimalize( 300 ));
+    let stake2 = await contentDAO.stake(redditPostId, true, decimalize( 600 ));
+    let stake3 = await contentDAO.stake(redditPostId, false, decimalize( 1200 ));
+    let stake4 = await contentDAO.stake(redditPostId, true, decimalize( 2400 ));
+    let stake5 = await contentDAO.stake(redditPostId, false, decimalize( 1600 )); // triggers adjudication
+    let post = await contentDAO.posts.call(redditPostId);
+    assert.equal(post[3].valueOf(), 2, "post was not Stage.ADJUDICATION");
+  });
+
+  it("adjudicate", async function() {
+    let contentDAO = await ContentDAO.deployed();
+    let votable = await contentDAO.isVotable.call(redditPostId);
+    assert.ok(votable, "not votable");
+    let vote = await contentDAO.vote(redditPostId, false);
+    let ended = await contentDAO.isEnded(redditPostId);
+    assert.ok(ended, "not ended");
+    let post = await contentDAO.posts.call(redditPostId);
+    assert.equal(post[3].valueOf(), 2, "post was not Stage.ADJUDICATION");
+  });
+
+  it("withdraw post-adjudication", async function() {
+    let contentDAO = await ContentDAO.deployed();
+    let withdraw = await contentDAO.withdraw(redditPostId);
+    let token = await Token.deployed();
+    let balance = await token.balanceOf.call(accounts[0]);
+    let contractBalance = await token.balanceOf.call(contentDAO.address);
   });
 
 });

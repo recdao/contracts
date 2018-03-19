@@ -8,8 +8,7 @@ contract ContentDAO {
 
     struct Post {
       uint                                           startedAt;
-      uint                                           lastSigStakeAt;
-      uint                                           toFlip;
+      uint                                           track;                     // use for lastSigStakeAt as well as adjudicationStartedAt
       bool                                           liked;
       Stage                                          stage;
       bool                                           feePaid;
@@ -24,7 +23,7 @@ contract ContentDAO {
     uint                            public subunits;
     uint                            public MEMBER_MIN_KARMA = 500;
     uint                            public FLIP_PERCENT = 200;
-    uint                            public ADJUDICATION_THRESHOLD = 2100;       // if start stake is 50 then at 2100, both sides = contribution
+    uint                            public ADJUDICATION_THRESHOLD = 6400;
     uint                            public SIG_STAKE = 50;                      // also serve as min stake? - yes
     uint                            public SIG_STAKE_DELAY = 43;                // delays end of staking for 10min if sig stake occurs
     uint                            public STAKE_DURATION = 6000;               // ~24 hrs
@@ -36,45 +35,52 @@ contract ContentDAO {
     event Opened(uint40 id);
     event Flipped(uint40 id);
     event StartAdjudication(uint40 id);
+    event Debug(uint num1, uint num2);
 
-    function ContentDAO (address _registry, address _token) {
+    function ContentDAO (address _registry, address _token, uint _voteDuration) {
         registry = IRegistry(_registry);
         token = IToken(_token);
         subunits = 10 ** uint(token.decimals());
+        VOTE_DURATION = _voteDuration;
     }
-
-    /* function stakeTest(uint40 _id, bool _vote, uint _amount) public returns(bool) {
-        Post storage post = posts[_id];
-        if(_amount > post.toFlip)
-            _amount = post.toFlip;
-        return _amount == post.toFlip;
-    } */
 
     function stake(uint40 _id, bool _vote, uint _amount) public {
         Post storage post = posts[_id];
         require( isStakeable(_id) );
-        // stake needs to support side opposite to currently winning
+        // can only stake on losing side
         require( _vote != post.liked );
         // trim _amount
-        if(_amount > post.toFlip)
-            _amount = post.toFlip;                                                // trim stake if over amount needed to flip - TODO fix this so can just stake without trim or chance of revert
+        uint toFlip = (post.totals[post.liked] * FLIP_PERCENT / 100) - post.totals[!post.liked];
+        if(_amount > toFlip)
+            _amount = toFlip;                                                   // trim stake if over amount needed to flip - TODO fix this so can just stake without trim or chance of revert
+
+        uint toAdjudicate = ADJUDICATION_THRESHOLD*subunits - (post.totals[true] + post.totals[false]);
+        if(_amount > toAdjudicate)
+            _amount = toAdjudicate;
+
+        Debug(toFlip, toAdjudicate);
 
         require( token.transferFrom(msg.sender, this, _amount) );
 
         post.stakes[_vote][msg.sender] += _amount;
         post.totals[_vote] += _amount;
-        if(_amount == post.toFlip) flip(_id);
-        if(_amount >= SIG_STAKE*subunits) post.lastSigStakeAt = block.number;
+        if(_amount == toFlip) flip(_id);
+        if(_amount >= SIG_STAKE*subunits) post.track = block.number;
 
         // if within final hour, trigger adjudication (250 blocks = 1 hr)
-        if(block.number >= post.startedAt + STAKE_DURATION - 250) startAdjudication(_id);
+        if(block.number >= post.startedAt + STAKE_DURATION - 250) {
+          startAdjudication(_id);
+          return;
+        }
         // if total becomes over threshold, trigger adjudication
-        if(post.totals[_vote] >= ADJUDICATION_THRESHOLD*subunits) startAdjudication(_id);
+        if(_amount == toAdjudicate) {
+          startAdjudication(_id);
+          return;
+        }
     }
 
     function flip(uint40 _id) internal {
         Post storage post = posts[_id];
-        post.toFlip = FLIP_PERCENT * post.toFlip / 100;
         post.liked = !post.liked;
         Flipped(_id);
     }
@@ -82,19 +88,10 @@ contract ContentDAO {
     function startAdjudication(uint40 _id) internal {
         Post storage post = posts[_id];
         post.stage = Stage.ADJUDICATION;
+        post.track = block.number;
         StartAdjudication(_id);
         // inAdjudication array?
     }
-
-    /* function openTest(uint40 _id, uint _amount) public returns (bool) { */
-    /* function openTest(uint40 _id, uint _amount) public {
-        // not already existing
-        require( posts[_id].stage == Stage.NONE );
-        // over min stake
-        require( _amount >= SIG_STAKE*subunits );
-        // can transfer tokens
-        require( token.transferFrom(msg.sender, this, _amount) );
-    } */
 
     function open(uint40 _id, uint _amount) public {
         // not already existing
@@ -105,7 +102,6 @@ contract ContentDAO {
         require( token.transferFrom(msg.sender, this, _amount) );
         Post storage post = posts[_id];
         post.startedAt = block.number;
-        post.toFlip = FLIP_PERCENT * _amount / 100;
         post.liked = true;
         post.stage = Stage.ACTIVE;
         post.totals[true] += _amount;
@@ -130,19 +126,22 @@ contract ContentDAO {
         // get winning side
         Post storage post = posts[_id];
         bool liked = post.liked;
-        if( post.stage == Stage.ADJUDICATION &&
-            ( post.voteTotals[true] > 0 || post.voteTotals[false] > 0 ) ) {       // no vote no ruling
+        if( post.stage == Stage.ADJUDICATION  ) {
             liked = post.voteTotals[true] > post.voteTotals[false];
             if ( !post.feePaid ) {
-              require( token.transferFrom(this, 0, post.totals[!liked] * ADJUDICATION_FEE_PERCENT / 100) );
+              uint fee = post.totals[!liked] * ADJUDICATION_FEE_PERCENT / 100;
+              post.totals[!liked] -= fee;
+
+              // TODO - do proper burn here as minime doesn't allow send to 0
+              require( token.transfer(2, fee) );
               post.feePaid = true;
             }
         }
 
         uint stake = post.stakes[liked][msg.sender];
-        uint award = post.totals[!liked] * stake  / post.totals[liked];
+        uint award = post.totals[!liked] * stake / post.totals[liked];
         // if adjudicated, get winning side
-        require( token.transferFrom(this, msg.sender, stake + award) );
+        require( token.transfer(msg.sender, stake + award) );
         // send and delete address=>stake mapping
     }
 
@@ -165,13 +164,13 @@ contract ContentDAO {
         Post storage post = posts[_id];
         return post.stage == Stage.ACTIVE &&
                ( block.number < post.startedAt + STAKE_DURATION ||
-                 block.number < post.lastSigStakeAt + SIG_STAKE_DELAY );
+                 block.number < post.track + SIG_STAKE_DELAY );
     }
 
     function isVotable(uint40 _id) public view returns (bool) {
         Post storage post = posts[_id];
         return post.stage == Stage.ADJUDICATION &&
-               block.number < post.startedAt + STAKE_DURATION + VOTE_DURATION;
+               block.number < post.track + VOTE_DURATION;
     }
 
 }

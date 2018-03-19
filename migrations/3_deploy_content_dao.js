@@ -11,5 +11,5 @@ module.exports = function(deployer, network) {
     .then( registry => regAddress = registry.address )
     .then( () => Token.deployed() )
     .then( token => tokenAddress = token.address )
-    .then( () => deployer.deploy(ContentDAO, regAddress, tokenAddress) );
+    .then( () => deployer.deploy(ContentDAO, regAddress, tokenAddress, 2) );
 };
