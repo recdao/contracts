@@ -12,6 +12,7 @@ contract ContentDAO {
       uint                                           toFlip;
       bool                                           liked;
       Stage                                          stage;
+      bool                                           feePaid;
       mapping(bool => uint)                          totals;
       mapping(bool => mapping(address => uint))      stakes;
       mapping(bool => uint)                          voteTotals;
@@ -28,7 +29,7 @@ contract ContentDAO {
     uint                            public SIG_STAKE_DELAY = 43;                // delays end of staking for 10min if sig stake occurs
     uint                            public STAKE_DURATION = 6000;               // ~24 hrs
     uint                            public VOTE_DURATION = 6000;                // ~24 hrs
-    // uint                            public ADJUDICATION_FEE_PERCENT = 10;    // TODO
+    uint                            public ADJUDICATION_FEE_PERCENT = 10;
 
     mapping(uint40 => Post)         public posts;
 
@@ -103,6 +104,10 @@ contract ContentDAO {
       if( post.stage == Stage.ADJUDICATION &&
           ( post.voteTotals[true] > 0 || post.voteTotals[false] > 0 ) ) {       // no vote no ruling
           liked = post.voteTotals[true] > post.voteTotals[false];
+          if ( !post.feePaid ) {
+            require( token.transferFrom(this, 0, post.totals[!liked] * ADJUDICATION_FEE_PERCENT / 100) );
+            post.feePaid = true;
+          }
       }
 
       uint stake = post.stakes[liked][msg.sender];
