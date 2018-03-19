@@ -33,6 +33,9 @@ contract ContentDAO {
 
     mapping(uint40 => Post)         public posts;
 
+    event Opened(uint40 id);
+    event StartAdjudication(uint40 id);
+
     function ContentDAO (address _registry, address _token) {
         registry = IRegistry(_registry);
         token = IToken(_token);
@@ -65,12 +68,13 @@ contract ContentDAO {
         _post.toFlip = FLIP_PERCENT * _post.toFlip / 100;
     }
 
-    function startAdjudication(Post _post) internal {
+    function startAdjudication(uint40 _id, Post _post) internal {
         _post.stage = Stage.ADJUDICATION;
+        StartAdjudication(_id);
         // inAdjudication array?
     }
 
-    function init(uint40 _id, uint _amount) public {
+    function open(uint40 _id, uint _amount) public {
       // not already existing
       require( posts[_id].stage == Stage.NONE );
       // over min stake
@@ -82,6 +86,7 @@ contract ContentDAO {
       post.startedAt = block.number;
       post.stage = Stage.ACTIVE;
       posts[_id] = post;
+      Opened(_id);
     }
 
     function vote(uint40 _id, bool _vote) public {
