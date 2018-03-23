@@ -113,12 +113,17 @@ contract ContentDAO {
         require( isMember(msg.sender) );
         require( isVotable(_id) );
         Post storage post = posts[_id];
-        // TODO require( didn't already vote );
+        require( !post.voted[msg.sender] );
         require( post.stage == Stage.ADJUDICATION );
 
         uint weight = 1;                                                        // or karma? registry.getKarma(registry.ownerToUsername(msg.sender)
         post.voted[msg.sender] = true;
         post.voteTotals[_vote] += weight;
+    }
+
+    function voted(uint40 _id, address _address) public view returns(bool) {
+        Post storage post = posts[_id];
+        return post.voted[_address];
     }
 
     function withdraw(uint40 _id) public {
@@ -138,10 +143,10 @@ contract ContentDAO {
             }
         }
 
-        uint stake = post.stakes[liked][msg.sender];
-        uint award = post.totals[!liked] * stake / post.totals[liked];
+        uint staked = post.stakes[liked][msg.sender];
+        uint award = post.totals[!liked] * staked / post.totals[liked];
         // if adjudicated, get winning side
-        require( token.transfer(msg.sender, stake + award) );
+        require( token.transfer(msg.sender, staked + award) );
         // send and delete address=>stake mapping
     }
 
