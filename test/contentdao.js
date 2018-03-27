@@ -24,6 +24,12 @@ contract('ContentDAO', function(accounts) {
     assert.equal(address, accounts[0], `${testUsername} was not registered`);
   });
 
+  it(`${testUsername} is ContentDAO member`, async function() {
+    let contentDAO = await ContentDAO.deployed();
+    let isMember = await contentDAO.isMember(accounts[0]);
+    assert.ok(isMember, `${testUsername} was not a member`);
+  });
+
   it(`${testUsername} approve`, async function() {
     let contentDAO = await ContentDAO.deployed();
     let token = await Token.deployed();
@@ -34,10 +40,10 @@ contract('ContentDAO', function(accounts) {
     assert.equal(allowance, decimalize(testData[1]), `ContentDAO allowance was ${allowance} and not ${decimalize(testData[1])}`);
   });
 
-  it("STAKE_DURATION is 6000", async function() {
+  it("STAKE_DURATION is 3000", async function() {
     let contentDAO = await ContentDAO.deployed();
     let stakeDuration = await contentDAO.STAKE_DURATION.call();
-    assert.equal(stakeDuration.valueOf(), 6000, "STAKE_DURATION was not 6000");
+    assert.equal(stakeDuration.valueOf(), 3000, "STAKE_DURATION was not 3000");
   });
 
   it("open Post staking", async function() {
