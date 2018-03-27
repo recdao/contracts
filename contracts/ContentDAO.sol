@@ -26,7 +26,8 @@ contract ContentDAO {
     uint                            public ADJUDICATION_THRESHOLD = 6400;
     uint                            public SIG_STAKE = 50;                      // also serve as min stake? - yes
     uint                            public SIG_STAKE_DELAY = 43;                // delays end of staking for 10min if sig stake occurs
-    uint                            public STAKE_DURATION = 6000;               // ~24 hrs
+    // uint                            public STAKE_DURATION = 6000;               // ~24 hrs
+    uint                            public STAKE_DURATION = 3000;               // ~12 hrs
     uint                            public VOTE_DURATION = 6000;                // ~24 hrs
     uint                            public ADJUDICATION_FEE_PERCENT = 10;
 
@@ -54,7 +55,7 @@ contract ContentDAO {
         require( isStakeable(_id) );
         // can only stake on losing side
         require( _vote != post.liked );
-        // trim _amount
+        // trim _amount if necessary
         uint toFlip = (post.totals[post.liked] * FLIP_PERCENT / 100) - post.totals[!post.liked];
         if(_amount > toFlip)
             _amount = toFlip;                                                   // trim stake if over amount needed to flip - TODO fix this so can just stake without trim or chance of revert
@@ -149,9 +150,9 @@ contract ContentDAO {
 
         uint staked = post.stakes[liked][msg.sender];
         uint award = post.totals[!liked] * staked / post.totals[liked];
-        // if adjudicated, get winning side
-        require( token.transfer(msg.sender, staked + award) );
         // send and delete address=>stake mapping
+        delete post.stakes[liked][msg.sender];
+        require( token.transfer(msg.sender, staked + award) );
     }
 
     function isEnded(uint40 _id) public view returns(bool) {
