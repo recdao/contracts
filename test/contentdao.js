@@ -50,6 +50,9 @@ contract('ContentDAO', function(accounts) {
     let contentDAO = await ContentDAO.deployed();
     // 50  150 600   2400
     // 100 300 1200  1600
+
+    // 10 40  200 1200  1450
+    // 20 80  500 2300
     let open = await contentDAO.stake(redditPostId01, 1, decimalize(50));
     let post = await contentDAO.posts.call(redditPostId01);
     assert.equal(post[3].valueOf(), 1, "post was not Stage.ACTIVE");

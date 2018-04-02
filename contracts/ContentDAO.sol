@@ -21,10 +21,10 @@ contract ContentDAO {
     IRegistry                       public registry;
     IToken                          public token;
     uint                            public subunits;
-    uint                            public MEMBER_MIN_KARMA = 500;
+    uint                            public MEMBER_MIN_KARMA = 1000;
     uint                            public FLIP_PERCENT = 200;
-    uint                            public ADJUDICATION_THRESHOLD = 6400;
-    uint                            public SIG_STAKE = 50;                      // also serve as min stake? - yes
+    uint                            public ADJUDICATION_THRESHOLD = 5800;
+    uint                            public SIG_STAKE = 10;                      // also serve as min stake? - yes
     uint                            public SIG_STAKE_DELAY = 43;                // delays end of staking for 10min if sig stake occurs
     // uint                            public STAKE_DURATION = 6000;               // ~24 hrs
     uint                            public STAKE_DURATION = 3000;               // ~12 hrs
@@ -33,8 +33,8 @@ contract ContentDAO {
 
     mapping(uint40 => Post)         public posts;
 
-    event Opened(uint40 id);
-    event Flipped(uint40 id);
+    event Open(uint40 id);
+    event Flip(uint40 id);
     event StartAdjudication(uint40 id);
 
     function ContentDAO (address _registry, address _token, uint _voteDuration) {
@@ -73,7 +73,7 @@ contract ContentDAO {
         if(_amount == toFlip) {
             post.liked = !post.liked;
             flipped = true;
-            Flipped(_id);
+            Flip(_id);
         }
         if(_amount >= SIG_STAKE*subunits) post.track = block.number;
 
@@ -111,7 +111,7 @@ contract ContentDAO {
         post.stage = Stage.ACTIVE;
         post.totals[_vote] += _amount;
         post.stakes[_vote][msg.sender] += _amount;
-        Opened(_id);
+        Open(_id);
     }
 
     function vote(uint40 _id, bool _vote) public {
