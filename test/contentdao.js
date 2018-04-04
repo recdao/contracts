@@ -15,6 +15,11 @@ const redditPostId02 = bases.fromBase36("876ya9");
 const redditPostId03 = bases.fromBase36("877reh");
 const redditPostId04 = bases.fromBase36("89o4ju");
 const redditPostId05 = bases.fromBase36("89cqfk");
+const redditPostId06 = bases.fromBase36("89hze6");
+const redditPostId07 = bases.fromBase36("7lusyi");
+const redditPostId08 = bases.fromBase36("89mzea");
+const redditPostId09 = bases.fromBase36("89fcg1");
+const redditPostId10 = bases.fromBase36("89akls");
 
 contract('ContentDAO', function(accounts) {
 
@@ -140,12 +145,48 @@ contract('ContentDAO', function(accounts) {
     assert.equal(post[3].valueOf(), 1, "post was not Stage.ACTIVE");
   });
 
+  it("open Post 06 liked", async function() {
+    let contentDAO = await ContentDAO.deployed();
+    let open = await contentDAO.stake(redditPostId06, 0, decimalize(50));
+    let post = await contentDAO.posts.call(redditPostId06);
+    assert.equal(post[3].valueOf(), 1, "post was not Stage.ACTIVE");
+  });
+
+  it("open Post 07 liked", async function() {
+    let contentDAO = await ContentDAO.deployed();
+    let open = await contentDAO.stake(redditPostId07, 0, decimalize(50));
+    let post = await contentDAO.posts.call(redditPostId07);
+    assert.equal(post[3].valueOf(), 1, "post was not Stage.ACTIVE");
+  });
+
+  it("open Post 08 liked", async function() {
+    let contentDAO = await ContentDAO.deployed();
+    let open = await contentDAO.stake(redditPostId08, 0, decimalize(50));
+    let post = await contentDAO.posts.call(redditPostId08);
+    assert.equal(post[3].valueOf(), 1, "post was not Stage.ACTIVE");
+  });
+
+  it("open Post 09 liked", async function() {
+    let contentDAO = await ContentDAO.deployed();
+    let open = await contentDAO.stake(redditPostId09, 0, decimalize(50));
+    let post = await contentDAO.posts.call(redditPostId09);
+    assert.equal(post[3].valueOf(), 1, "post was not Stage.ACTIVE");
+  });
+
+  it("open Post 10 liked", async function() {
+    let contentDAO = await ContentDAO.deployed();
+    let open = await contentDAO.stake(redditPostId10, 0, decimalize(50));
+    let post = await contentDAO.posts.call(redditPostId10);
+    assert.equal(post[3].valueOf(), 1, "post was not Stage.ACTIVE");
+  });
+
   it("withdraw all", async function() {
     let tx = await pushBlocks(10);
     let contentDAO = await ContentDAO.deployed();
-    let stake = await contentDAO.withdraw([redditPostId02, redditPostId03, redditPostId04]);
+    let stake = await contentDAO.withdraw([redditPostId02, redditPostId03, redditPostId04, redditPostId05, redditPostId06, redditPostId07, redditPostId08, redditPostId09, redditPostId10]);
     // let stake = await contentDAO.withdraw([redditPostId02, redditPostId03, redditPostId04, redditPostId05]);
-    console.log(stake);//93153, 87588
+    //Gas depending on how many ids sent: 93153, 87588, 82023, 76458, 72947, 77664, 82382, 87099, 91817
+    console.log(stake);
     let post = await contentDAO.getPost.call(redditPostId02);
     // console.log(post)
     assert.equal(post[9].valueOf(), 0, "no user stake left Post 02:liked");
