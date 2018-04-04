@@ -23,13 +23,14 @@ contract ContentDAO {
     uint                            public subunits;
     uint                            public MEMBER_MIN_KARMA = 1000;
     uint                            public FLIP_PERCENT = 200;
-    uint                            public ADJUDICATION_THRESHOLD = 5800;
+    uint                            public ADJUDICATION_THRESHOLD = 5120;
     uint                            public SIG_STAKE = 10;                      // also serve as min stake? - yes
     uint                            public SIG_STAKE_DELAY = 43;                // delays end of staking for 10min if sig stake occurs
     // uint                            public STAKE_DURATION = 6000;               // ~24 hrs
     uint                            public STAKE_DURATION = 3000;               // ~12 hrs
     uint                            public VOTE_DURATION = 6000;                // ~24 hrs
     uint                            public ADJUDICATION_FEE_PERCENT = 10;
+    uint                            public LATE_FLIP_WINDOW = 250;              // ~ 1 hr
 
     mapping(uint40 => Post)         public posts;
 
@@ -37,11 +38,13 @@ contract ContentDAO {
     event Flip(uint40 id);
     event StartAdjudication(uint40 id);
 
-    function ContentDAO (address _registry, address _token, uint _voteDuration) {
+    function ContentDAO (address _registry, address _token, uint _stakeDuration, uint _voteDuration, uint _lateFlipWindow) {
         registry = IRegistry(_registry);
         token = IToken(_token);
         subunits = 10 ** uint(token.decimals());
+        STAKE_DURATION = _stakeDuration;
         VOTE_DURATION = _voteDuration;
+        LATE_FLIP_WINDOW = _lateFlipWindow;
     }
 
     function stake(uint40 _id, bool _vote, uint _amount) public {
@@ -81,7 +84,7 @@ contract ContentDAO {
         // if flipped within final hour, trigger adjudication (250 blocks = 1 hr)
         if(
             _amount == toAdjudicate ||
-            (flipped && block.number >= post.startedAt + STAKE_DURATION - 250)
+            (flipped && block.number >= post.startedAt + STAKE_DURATION - LATE_FLIP_WINDOW)
           ) {
             startAdjudication(_id);
             return;
@@ -134,25 +137,33 @@ contract ContentDAO {
         return post.voted[_address];
     } */
 
-    function withdraw(uint40 _id) public {
-        require( isEnded(_id) );
-        // get winning side
-        Post storage post = posts[_id];
-        bool liked = post.liked;
-        if( post.stage == Stage.ADJUDICATION && !post.feePaid ) {               // first withdraw burns fee
-            uint fee = post.totals[!liked] * ADJUDICATION_FEE_PERCENT / 100;
-            post.totals[!liked] -= fee;
+    function withdraw(uint40[] _ids) public {
 
-            // TODO - do proper burn here as minime doesn't allow send to 0
-            require( token.transfer(2, fee) );
-            post.feePaid = true;
+        uint total = 0;
+
+        for (uint i=0; i<_ids.length; i++) {
+            uint40 id = _ids[i];
+            require( isEnded(id) );
+            // get winning side
+            Post storage post = posts[id];
+            bool liked = post.liked;
+            if( post.stage == Stage.ADJUDICATION && !post.feePaid ) {               // first withdraw burns fee
+                uint fee = post.totals[!liked] * ADJUDICATION_FEE_PERCENT / 100;
+                post.totals[!liked] -= fee;
+
+                // TODO - do proper burn here as minime doesn't allow send to 0
+                require( token.transfer(2, fee) );
+                post.feePaid = true;
+            }
+
+            uint staked = post.stakes[liked][msg.sender];
+            uint award = post.totals[!liked] * staked / post.totals[liked];
+            // send and delete address=>stake mapping
+            delete post.stakes[liked][msg.sender];
+            total += staked + award;
         }
 
-        uint staked = post.stakes[liked][msg.sender];
-        uint award = post.totals[!liked] * staked / post.totals[liked];
-        // send and delete address=>stake mapping
-        delete post.stakes[liked][msg.sender];
-        require( token.transfer(msg.sender, staked + award) );
+        require( token.transfer(msg.sender, total) );
     }
 
     function isEnded(uint40 _id) public view returns(bool) {
