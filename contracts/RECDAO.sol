@@ -5,16 +5,16 @@ import "./UtilityLib.sol";
 
 contract RECDAO {
 
-    enum Actions                  { UPGRADE, ADD_ROOT }
+    enum Actions                  { NONE, UPGRADE, ADD_ROOT }
 
     struct Prop {
         Actions                     action;
         bytes32                     data;
         uint                        startedAt;
-        uint                        lastSigVoteAt;
+        uint                        endAt;
         bytes20                     author;
         bool                        enacted;
-        mapping(uint => uint)       results;
+        mapping(bool => uint)       results;
         mapping(address => bool)    voted;
     }
 
@@ -22,28 +22,28 @@ contract RECDAO {
     IToken                          public token;
     Prop[]                          public props;
     bytes32[]                       public roots;
-    uint                            public subunits;
+    uint                            public subunits = 10 ** 18;
 
     uint                            public PROP_STAKE = 1000;
-    uint                            public SIG_VOTE = 200;
-    uint                            public SIG_VOTE_DELAY = 43;
+    uint                            public PROP_CLOSE_DURATION = 6000;          // 24 hours
+    uint                            public PROP_CLOSE_FLIP_DELAY = 3000;        // 12 hours
     uint                            public PROP_DURATION = 43200;
     uint                            public MIN_PASS = 10000;
 
     event Proposed(bytes20 username, uint propIdx);
-    event Voted(bytes20 username, uint propIdx, uint prefIdx);
+    event Voted(bytes20 username, uint propIdx, bool pref);
     event Enacted(uint propIdx);
 
-    function RECDAO(address _parent, address _token, address _registry, bytes32 _root, uint _propDuration, uint _sigVoteDelay){
+    function RECDAO(address _parent, address _token, address _registry, bytes32 _root, uint _propDuration, uint _propCloseFlipDelay){
       PROP_DURATION = _propDuration;
-      SIG_VOTE_DELAY = _sigVoteDelay;
+      PROP_CLOSE_FLIP_DELAY = _propCloseFlipDelay;
       if(_parent == 0){
           roots.push(_root);
-          setToken(_token);
+          token = IToken(_token);
           registry = IRegistry(_registry);
       } else {
           RECDAO parentDAO = RECDAO(_parent);
-          setToken(address(parentDAO.token));
+          token = IToken(address(parentDAO.token));
           registry = IRegistry(address(parentDAO.registry));
       }
     }
@@ -51,11 +51,6 @@ contract RECDAO {
     function upgrade(address _newController) internal {
         registry.changeController(_newController);
         token.changeController(_newController);
-    }
-
-    function setToken(address _token) internal {
-        token = IToken(_token);
-        subunits = 10 ** uint(token.decimals());
     }
 
     function register(
@@ -118,9 +113,10 @@ contract RECDAO {
         prop.action = _action;
         prop.data = _data;
         prop.startedAt = block.number;
+        prop.endAt = block.number + PROP_DURATION;
         prop.author = username;
 
-        Proposed(username, props.push(prop)-1);
+        emit Proposed(username, props.push(prop)-1);
     }
 
     function enact(uint _propIdx) public {
@@ -146,12 +142,12 @@ contract RECDAO {
             roots.push(prop.data);
         }
 
-        Enacted(_propIdx);
+        emit Enacted(_propIdx);
     }
 
-    function getResult(uint _propIdx, uint _prefIdx) public view returns (uint) {
+    function getResult(uint _propIdx, bool _pref) public view returns (uint) {
         Prop storage prop = props[_propIdx];
-        return prop.results[_prefIdx];
+        return prop.results[_pref];
     }
 
     function getVoted(uint _propIdx) public view returns (bool) {
@@ -209,13 +205,17 @@ contract RECDAO {
                prop.results[1]/2 > prop.results[0];                             // 2/3 majority to pass
     }
 
-    function isVotable(uint _propIdx) public view returns (bool) {
+    function isClosing(uint _propIdx) public view returns (bool) {
         Prop storage prop = props[_propIdx];
-        return block.number < prop.startedAt + PROP_DURATION ||
-               block.number < prop.lastSigVoteAt + SIG_VOTE_DELAY;
+        return block.number >= prop.endAt - PROP_CLOSE_DURATION && isVotable(_propIdx);
     }
 
-    function vote(uint _propIdx, uint _prefIdx) public {
+    function isVotable(uint _propIdx) public view returns (bool) {
+        Prop storage prop = props[_propIdx];
+        return block.number < prop.endAt;
+    }
+
+    function vote(uint _propIdx, bool _pref) public {
         bytes20 username = registry.ownerToUsername(msg.sender);
         require( username != 0 );
 
@@ -226,14 +226,20 @@ contract RECDAO {
 
         require(
           prop.voted[msg.sender] == false &&                                    // didn't already vote
-          isVotable(_propIdx)                         // prop still active
+          isVotable(_propIdx)                                                   // prop still active
           );
 
-        uint voteWeight = registry.getKarma(username);                          // starting balance
-        if(voteWeight >= SIG_VOTE)
-            prop.lastSigVoteAt = block.number;
-        prop.results[_prefIdx] += karma;
+        bool isPassingAtStart = isPassing(_propIdx);
+
+        // TODO - can't have complete control over token only beholden to karma vote
+        uint voteWeight = registry.getKarma(username);
+
+        prop.results[_pref] += karma;
         prop.voted[msg.sender] = true;
-        Voted(username, _propIdx, _prefIdx);
+
+        if( isClosing(_propIdx) && isPassing(_propIdx) != isPassingAtStart )
+            prop.endAt += PROP_CLOSE_FLIP_DELAY;
+
+        emit Voted(username, _propIdx, _pref);
     }
 }
